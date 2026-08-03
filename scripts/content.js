@@ -1,3 +1,5 @@
+const platform = window.location.hostname.includes('geeksforgeeks') ? 'GeeksForGeeks' : 'LeetCode';
+
 // Inject intercept.js into the main world to patch fetch/XHR
 const script = document.createElement('script');
 script.src = chrome.runtime.getURL('scripts/intercept.js');
@@ -6,29 +8,51 @@ script.onload = function() {
 };
 (document.head || document.documentElement).appendChild(script);
 
+// If on GFG, poll the DOM for success since their network response varies heavily
+if (platform === 'GeeksForGeeks') {
+    let gfgSuccessFound = false;
+    setInterval(() => {
+        if (gfgSuccessFound) return;
+        const textElements = Array.from(document.querySelectorAll('div, span, h3')).map(el => el.textContent.trim());
+        if (textElements.some(t => t.includes('Problem Solved Successfully') || t === 'Correct Answer')) {
+            gfgSuccessFound = true;
+            console.log("[Code Sync] GFG Success detected in DOM! Requesting code...");
+            window.postMessage({ type: 'GET_PENDING_SUBMISSION' }, '*');
+            // Reset after 10s to allow another submission
+            setTimeout(() => { gfgSuccessFound = false; }, 10000);
+        }
+    }, 2000);
+}
+
 // Listen for messages from intercept.js
 window.addEventListener('message', (event) => {
     if (event.source !== window) return;
     
-    if (event.data && event.data.type === 'LEETCODE_SUBMISSION_ACCEPTED') {
-        console.log("[LeetCode Sync Content] Received accepted submission!", event.data.payload);
+    if (event.data && event.data.type === 'CODE_SUBMISSION_ACCEPTED') {
+        console.log("[Code Sync Content] Received accepted submission via Network!", event.data.payload);
         pushSubmission(event.data.payload);
+    } else if (event.data && event.data.type === 'PENDING_SUBMISSION_RESPONSE') {
+        const payload = event.data.payload;
+        // Prevent double pushing the exact same code
+        if (window.__last_pushed_code === payload.code) return;
+        window.__last_pushed_code = payload.code;
+
+        console.log("[Code Sync Content] Received pending submission for GFG via DOM trigger!", payload);
+        payload.stats = "See GeeksForGeeks for stats";
+        pushSubmission(payload);
     }
 });
 
 function extractProblemTitle() {
-    // Attempt 1: Get from URL
     const pathname = window.location.pathname;
     const match = pathname.match(/\/problems\/([^/]+)/);
     if (match && match[1]) {
-        // Convert 'two-sum' to 'Two Sum'
         return match[1].split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
     }
     
-    // Attempt 2: DOM
     const titleEl = document.querySelector('title');
     if (titleEl) {
-        return titleEl.textContent.split('-')[0].trim();
+        return titleEl.textContent.split('-')[0].split('|')[0].trim();
     }
     
     return 'Unknown Problem';

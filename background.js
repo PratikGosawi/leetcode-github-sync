@@ -16,7 +16,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 async function pushToGitHub(data) {
-    const { title, difficulty, code, language, stats } = data;
+    const { title, difficulty, code, language, stats, platform } = data;
     const { ghToken, ghRepo, ghUsername } = await chrome.storage.local.get(['ghToken', 'ghRepo', 'ghUsername']);
 
     if (!ghToken || !ghRepo || !ghUsername) {
@@ -34,8 +34,9 @@ async function pushToGitHub(data) {
     
     // Clean up title for folder name
     const folderName = title.replace(/[^\w\s-]/g, '').trim();
-    const filePath = `${folderName}/solution.${ext}`;
-    const readmePath = `${folderName}/README.md`;
+    const basePath = platform === 'GeeksForGeeks' ? `GeeksForGeeks/${folderName}` : `LeetCode/${folderName}`;
+    const filePath = `${basePath}/solution.${ext}`;
+    const readmePath = `${basePath}/README.md`;
 
     // Create a README content with stats
     const readmeContent = `# ${title}\n\n**Difficulty:** ${difficulty}\n\n**Stats:** ${stats}`;

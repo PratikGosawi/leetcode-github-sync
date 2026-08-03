@@ -1,13 +1,14 @@
-# LeetCode GitHub Sync
+# Code Sync (LeetCode & GeeksForGeeks)
 
-A modern, fast, and completely standalone Chrome Extension that automatically pushes your accepted LeetCode solutions to a GitHub repository of your choice. 
+A modern, fast, and completely standalone Chrome Extension that automatically pushes your accepted LeetCode and GeeksForGeeks solutions to a GitHub repository of your choice. 
 
-Built as a lightweight alternative to LeetHub, this extension prioritizes privacy, speed, and reliability by communicating directly with the GitHub API without any intermediate OAuth servers or brittle DOM scraping.
+Built as a lightweight alternative to LeetHub, this extension prioritizes privacy, speed, and reliability by communicating directly with the GitHub API without any intermediate OAuth servers.
 
 ## ✨ Features
 
+- **Dual Platform Support**: Seamlessly syncs from both LeetCode and GeeksForGeeks. Solutions are automatically organized into respective `LeetCode/` and `GeeksForGeeks/` folders.
 - **Zero Backend**: All authentication and API requests happen locally on your machine.
-- **Flawless Interception**: Instead of scraping the UI, it securely intercepts the underlying network requests to LeetCode's servers, meaning it will never break when LeetCode updates their visual layout.
+- **Flawless Interception**: Instead of scraping the UI, it securely intercepts the underlying network requests to the platforms' servers, meaning it will never break when they update their visual layout.
 - **Auto-Sync**: The moment your solution passes all test cases, it is pushed directly to your specified GitHub repository.
 - **Auto-Repo Creation**: The extension can automatically initialize the repository on your GitHub account if it doesn't already exist.
 - **Beautiful UI**: Features a sleek, dark-mode, glassmorphism popup interface.
