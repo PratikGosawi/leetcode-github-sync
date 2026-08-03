@@ -1,0 +1,45 @@
+{
+  "manifest_version": 3,
+  "name": "LeetCode GitHub Sync",
+  "version": "1.0",
+  "description": "Automatically push accepted LeetCode solutions to a GitHub repository.",
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://leetcode.com/*",
+    "*://leetcode.cn/*",
+    "https://api.github.com/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "*://leetcode.com/problems/*",
+        "*://leetcode.cn/problems/*"
+      ],
+      "js": [
+        "scripts/content.js"
+      ],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "scripts/intercept.js"
+      ],
+      "matches": [
+        "*://leetcode.com/*",
+        "*://leetcode.cn/*"
+      ]
+    }
+  ]
+}
