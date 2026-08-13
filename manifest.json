@@ -25,7 +25,7 @@
       "matches": [
         "*://leetcode.com/problems/*",
         "*://leetcode.cn/problems/*",
-        "*://practice.geeksforgeeks.org/problems/*"
+        "*://*.geeksforgeeks.org/problems/*"
       ],
       "js": [
         "scripts/content.js"
