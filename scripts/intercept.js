@@ -41,7 +41,7 @@ window.fetch = async function(...args) {
                         window.__leetcode_submit_id = null; // reset until response arrives
                         console.log('[Code Sync] Captured LeetCode submit payload.');
                     } else if (isGFG) {
-                        let code = parsed.code || parsed.program || parsed.sourceCode || parsed.user_code || parsed.source;
+                        let code = parsed.code || parsed.program || parsed.sourceCode || parsed.user_code || parsed.userCode || parsed.source;
                         let lang = parsed.language || parsed.lang;
                         if (code && lang) {
                             window.__leetcode_sync_pending = { code, lang, platform: 'GeeksForGeeks' };
@@ -127,7 +127,7 @@ XMLHttpRequest.prototype.send = function(body) {
                     };
                     window.__leetcode_submit_id = null;
                 } else if (isGFG) {
-                    let code = parsed.code || parsed.program || parsed.sourceCode || parsed.user_code || parsed.source;
+                    let code = parsed.code || parsed.program || parsed.sourceCode || parsed.user_code || parsed.userCode || parsed.source;
                     let lang = parsed.language || parsed.lang;
                     if (code && lang) {
                         window.__leetcode_sync_pending = { code, lang, platform: 'GeeksForGeeks' };
