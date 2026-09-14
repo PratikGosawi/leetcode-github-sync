@@ -1,47 +1,108 @@
-const platform = window.location.hostname.includes('geeksforgeeks') ? 'GeeksForGeeks' : 'LeetCode';
+// ── GFG: DOM-based approach ─────────────────────────────────────────────────
+// GFG's CSP may block the network interceptor, so we read the code
+// directly from the editor DOM when the success banner appears.
 
-// Inject intercept.js into the main world to patch fetch/XHR
-const script = document.createElement('script');
-script.src = chrome.runtime.getURL('scripts/intercept.js');
-script.onload = function() {
-    this.remove();
-};
-(document.head || document.documentElement).appendChild(script);
+function extractGFGCode() {
+    // 1. CodeMirror (classic GFG editor)
+    const cm = document.querySelector('.CodeMirror');
+    if (cm && cm.CodeMirror) {
+        return cm.CodeMirror.getValue();
+    }
 
-// If on GFG, poll the DOM for success since their network response varies heavily
+    // 2. Monaco editor
+    if (window.monaco) {
+        const editors = window.monaco.editor.getEditors();
+        if (editors && editors.length > 0) {
+            return editors[0].getValue();
+        }
+    }
+
+    // 3. Ace editor
+    if (window.ace) {
+        try { return window.ace.edit(document.querySelector('.ace_editor')).getValue(); } catch(e) {}
+    }
+
+    // 4. Fallback: any <textarea> with substantial content
+    const textareas = Array.from(document.querySelectorAll('textarea'));
+    const codeArea = textareas.find(t => t.value && t.value.length > 10);
+    if (codeArea) return codeArea.value;
+
+    return null;
+}
+
+function extractGFGLanguage() {
+    // Try various selectors GFG uses for the language dropdown
+    const selectors = [
+        '[class*="lang"] button',
+        '[class*="language"] button',
+        '[class*="lang"] [class*="selected"]',
+        '[id*="lang"] [class*="selected"]',
+        'select[name="language"]',
+        '[class*="dropdown"] [class*="selected"]',
+    ];
+    for (const sel of selectors) {
+        const el = document.querySelector(sel);
+        if (el && el.textContent.trim()) return el.textContent.trim().toLowerCase();
+    }
+    // Try select elements
+    const sel = document.querySelector('select');
+    if (sel && sel.value) return sel.value.toLowerCase();
+    return 'unknown';
+}
+
 if (platform === 'GeeksForGeeks') {
     let gfgSuccessFound = false;
     setInterval(() => {
         if (gfgSuccessFound) return;
-        const textElements = Array.from(document.querySelectorAll('div, span, h3')).map(el => el.textContent.trim());
-        if (textElements.some(t => t.includes('Problem Solved Successfully') || t === 'Correct Answer')) {
+        const allText = document.body.innerText;
+        if (allText.includes('Problem Solved Successfully') || allText.includes('Correct Answer')) {
             gfgSuccessFound = true;
-            console.log("[Code Sync] GFG Success detected in DOM! Requesting code...");
-            window.postMessage({ type: 'GET_PENDING_SUBMISSION' }, '*');
-            // Reset after 10s to allow another submission
+            console.log('[Code Sync] GFG Success detected in DOM! Reading code from editor...');
+
+            const code = extractGFGCode();
+            const lang = extractGFGLanguage();
+
+            if (!code) {
+                console.warn('[Code Sync] Could not read code from GFG editor.');
+                showToast('⚠️ Solved! But could not read code from editor.', true);
+                setTimeout(() => { gfgSuccessFound = false; }, 10000);
+                return;
+            }
+
+            console.log('[Code Sync] GFG code captured from DOM. lang:', lang);
+
+            // Prevent double-pushing
+            if (window.__last_pushed_code === code) {
+                setTimeout(() => { gfgSuccessFound = false; }, 10000);
+                return;
+            }
+            window.__last_pushed_code = code;
+
+            pushSubmission({ code, lang, platform: 'GeeksForGeeks', stats: 'See GeeksForGeeks for stats' });
             setTimeout(() => { gfgSuccessFound = false; }, 10000);
         }
     }, 2000);
 }
 
-// Listen for messages from intercept.js
+// ── LeetCode: network-interception based ─────────────────────────────────────
+// Inject intercept.js into the main world to patch fetch/XHR (LeetCode only)
+if (platform === 'LeetCode') {
+    const script = document.createElement('script');
+    script.src = chrome.runtime.getURL('scripts/intercept.js');
+    script.onload = function() { this.remove(); };
+    (document.head || document.documentElement).appendChild(script);
+}
+
+// Listen for messages from intercept.js (LeetCode)
 window.addEventListener('message', (event) => {
     if (event.source !== window) return;
-    
     if (event.data && event.data.type === 'CODE_SUBMISSION_ACCEPTED') {
-        console.log("[Code Sync Content] Received accepted submission via Network!", event.data.payload);
+        console.log('[Code Sync] Received accepted submission via Network!', event.data.payload);
         pushSubmission(event.data.payload);
-    } else if (event.data && event.data.type === 'PENDING_SUBMISSION_RESPONSE') {
-        const payload = event.data.payload;
-        // Prevent double pushing the exact same code
-        if (window.__last_pushed_code === payload.code) return;
-        window.__last_pushed_code = payload.code;
-
-        console.log("[Code Sync Content] Received pending submission for GFG via DOM trigger!", payload);
-        payload.stats = "See GeeksForGeeks for stats";
-        pushSubmission(payload);
     }
 });
+
+
 
 function extractProblemTitle() {
     const pathname = window.location.pathname;
@@ -60,15 +121,15 @@ function extractProblemTitle() {
 
 function pushSubmission(payload) {
     const title = extractProblemTitle();
-    // Default difficulty, since it's hard to extract reliably and varies by layout
-    const difficulty = "See LeetCode for difficulty"; 
+    const difficulty = payload.platform === 'GeeksForGeeks' ? 'See GeeksForGeeks for difficulty' : 'See LeetCode for difficulty';
 
     const finalPayload = {
         title: title,
         difficulty: difficulty,
         code: payload.code,
         language: payload.lang,
-        stats: payload.stats
+        stats: payload.stats,
+        platform: payload.platform || 'LeetCode'
     };
 
     chrome.runtime.sendMessage({ type: 'PUSH_SUBMISSION', data: finalPayload }, (response) => {
