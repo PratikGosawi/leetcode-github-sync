@@ -2,6 +2,40 @@
 window.__leetcode_sync_pending = null;
 window.__leetcode_submit_id = null; // tracks the real submission ID from POST /submit/
 
+// Helper: extract code + language from GFG request bodies.
+// GFG sends data as form-encoded fields, NOT JSON.
+async function extractGFGPayload(body) {
+    if (!body) return null;
+
+    // 1. FormData (most common for GFG)
+    if (body instanceof FormData) {
+        const code = body.get('userCode') || body.get('code') || body.get('user_code') || body.get('program');
+        const lang = body.get('language') || body.get('lang');
+        if (code && lang) return { code, lang };
+        return null;
+    }
+
+    if (typeof body === 'string') {
+        // 2. Try URL-encoded (e.g. "userCode=...&language=python3")
+        try {
+            const params = new URLSearchParams(body);
+            const code = params.get('userCode') || params.get('code') || params.get('user_code') || params.get('program');
+            const lang = params.get('language') || params.get('lang');
+            if (code && lang) return { code, lang };
+        } catch (e) {}
+
+        // 3. Fallback: try JSON
+        try {
+            const parsed = JSON.parse(body);
+            const code = parsed.code || parsed.program || parsed.sourceCode || parsed.user_code || parsed.userCode || parsed.source;
+            const lang = parsed.language || parsed.lang;
+            if (code && lang) return { code, lang };
+        } catch (e) {}
+    }
+
+    return null;
+}
+
 window.addEventListener('message', (e) => {
     if (e.source !== window) return;
     if (e.data && e.data.type === 'GET_PENDING_SUBMISSION') {
@@ -21,8 +55,9 @@ window.fetch = async function(...args) {
     // --- LEETCODE SUBMIT (not Run/Interpret) ---
     // LeetCode "Run" uses /interpret_solution/ — we intentionally skip that.
     // Only /problems/<slug>/submit/ is a real submission.
-    const isLCSubmit = url && url.includes('/submit/') && !url.includes('/interpret_solution/');
     const isGFG = url && url.includes('geeksforgeeks');
+    // isLCSubmit must exclude GFG URLs (GFG's endpoint also has /submit/ in the path)
+    const isLCSubmit = url && url.includes('/submit/') && !url.includes('/interpret_solution/') && !isGFG;
 
     if (isLCSubmit || isGFG) {
         try {
@@ -40,15 +75,20 @@ window.fetch = async function(...args) {
                         };
                         window.__leetcode_submit_id = null; // reset until response arrives
                         console.log('[Code Sync] Captured LeetCode submit payload.');
-                    } else if (isGFG) {
-                        let code = parsed.code || parsed.program || parsed.sourceCode || parsed.user_code || parsed.userCode || parsed.source;
-                        let lang = parsed.language || parsed.lang;
-                        if (code && lang) {
-                            window.__leetcode_sync_pending = { code, lang, platform: 'GeeksForGeeks' };
-                            console.log('[Code Sync] Captured GFG submit payload.');
-                        }
                     }
                 }
+            }
+        } catch (e) {}
+    }
+
+    // GFG: handle separately (body may be FormData or URL-encoded, not JSON)
+    if (isGFG) {
+        try {
+            const body = args[1] && args[1].body;
+            const result = await extractGFGPayload(body);
+            if (result) {
+                window.__leetcode_sync_pending = { code: result.code, lang: result.lang, platform: 'GeeksForGeeks' };
+                console.log('[Code Sync] Captured GFG submit payload. lang:', result.lang);
             }
         } catch (e) {}
     }
@@ -112,8 +152,8 @@ XMLHttpRequest.prototype.open = function(method, url, ...args) {
 };
 
 XMLHttpRequest.prototype.send = function(body) {
-    const isLCSubmit = this._url && this._url.includes('/submit/') && !this._url.includes('/interpret_solution/');
     const isGFG = this._url && this._url.includes('geeksforgeeks');
+    const isLCSubmit = this._url && this._url.includes('/submit/') && !this._url.includes('/interpret_solution/') && !isGFG;
 
     if (isLCSubmit || isGFG) {
         try {
@@ -126,15 +166,19 @@ XMLHttpRequest.prototype.send = function(body) {
                         platform: 'LeetCode'
                     };
                     window.__leetcode_submit_id = null;
-                } else if (isGFG) {
-                    let code = parsed.code || parsed.program || parsed.sourceCode || parsed.user_code || parsed.userCode || parsed.source;
-                    let lang = parsed.language || parsed.lang;
-                    if (code && lang) {
-                        window.__leetcode_sync_pending = { code, lang, platform: 'GeeksForGeeks' };
-                    }
                 }
             }
         } catch (e) {}
+    }
+
+    // GFG: XHR body is always a string; try URL-encoded then JSON
+    if (isGFG) {
+        extractGFGPayload(body).then(result => {
+            if (result) {
+                window.__leetcode_sync_pending = { code: result.code, lang: result.lang, platform: 'GeeksForGeeks' };
+                console.log('[Code Sync] Captured GFG submit payload (XHR). lang:', result.lang);
+            }
+        }).catch(() => {});
     }
 
     this.addEventListener('load', function() {
