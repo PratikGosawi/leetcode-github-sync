@@ -6,50 +6,66 @@ console.log('[Code Sync] Content script loaded. Platform:', platform);
 // GFG's CSP blocks injected scripts, so we read the code directly from
 // the editor element when the success banner appears in the DOM.
 
-function extractGFGCode() {
-    // 1. Ace editor — GFG's actual editor (confirmed via debug)
-    //    Ace attaches the editor instance to the DOM element via `.env.editor`
-    //    DO NOT use window.ace.edit(el) — that creates a new blank instance!
+// ── GFG pre-save: store code every second so it's always ready ───────────────
+let _gfgSavedCode = null;
+let _gfgSavedLang = null;
+
+function readAceEditorValue() {
     const aceEl = document.querySelector('.ace_editor');
-    if (aceEl) {
-        // Primary: use the attached env
-        if (aceEl.env && aceEl.env.editor) {
-            const val = aceEl.env.editor.getValue();
-            if (val) return val;
-        }
-        // Fallback: ace.edit() may still work in some versions
-        if (window.ace) {
-            try {
-                const val = window.ace.edit(aceEl).getValue();
-                if (val) return val;
-            } catch(e) {}
-        }
-    }
+    if (!aceEl) return null;
 
-    // 2. CodeMirror
-    const cm = document.querySelector('.CodeMirror');
-    if (cm && cm.CodeMirror) {
-        const val = cm.CodeMirror.getValue();
-        if (val) return val;
-    }
-
-    // 3. Monaco editor
-    if (window.monaco) {
+    // Method 1: standard Ace env property
+    if (aceEl.env && aceEl.env.editor) {
         try {
-            const editors = window.monaco.editor.getEditors();
-            if (editors && editors.length > 0) return editors[0].getValue();
+            const v = aceEl.env.editor.getValue();
+            if (v && v.length > 0) return v;
         } catch(e) {}
     }
 
-    // 4. Fallback: any <textarea> with substantial content
-    const textareas = Array.from(document.querySelectorAll('textarea'));
-    const codeArea = textareas.find(t => t.value && t.value.length > 10);
-    if (codeArea) return codeArea.value;
+    // Method 2: traverse React's internal fiber tree to find the editor instance
+    // (GFG wraps Ace in a React component — the editor lives in stateNode)
+    try {
+        const fiberKey = Object.keys(aceEl).find(k => k.startsWith('__reactFiber') || k.startsWith('__reactInternalInstance'));
+        if (fiberKey) {
+            let fiber = aceEl[fiberKey];
+            while (fiber) {
+                const sn = fiber.stateNode;
+                if (sn && typeof sn === 'object') {
+                    // react-ace stores editor on stateNode.editor
+                    if (sn.editor && typeof sn.editor.getValue === 'function') {
+                        const v = sn.editor.getValue();
+                        if (v && v.length > 0) return v;
+                    }
+                    // or directly on the component ref
+                    if (sn.refEditor && typeof sn.refEditor.getValue === 'function') {
+                        const v = sn.refEditor.getValue();
+                        if (v && v.length > 0) return v;
+                    }
+                }
+                fiber = fiber.return;
+            }
+        }
+    } catch(e) {}
+
+    // Method 3: ace.edit() — returns existing instance in standard Ace builds
+    if (window.ace) {
+        try {
+            const v = window.ace.edit(aceEl).getValue();
+            if (v && v.length > 0) return v;
+        } catch(e) {}
+    }
+
+    // Method 4: read all rendered .ace_line elements (works for short solutions)
+    const lines = document.querySelectorAll('.ace_line');
+    if (lines.length > 0) {
+        const v = Array.from(lines).map(l => l.textContent).join('\n');
+        if (v.trim().length > 0) return v;
+    }
 
     return null;
 }
 
-function extractGFGLanguage() {
+function readGFGLanguage() {
     const selectors = [
         '[class*="lang"] button',
         '[class*="language"] button',
@@ -68,29 +84,39 @@ function extractGFGLanguage() {
 }
 
 if (platform === 'GeeksForGeeks') {
+    // Pre-save the code every second while the user is on the problem page
+    setInterval(() => {
+        const code = readAceEditorValue();
+        const lang = readGFGLanguage();
+        if (code && code.length > 5) {
+            _gfgSavedCode = code;
+            _gfgSavedLang = lang;
+        }
+    }, 1000);
+
+    // Detect success banner and push the last pre-saved code
     let gfgSuccessFound = false;
     setInterval(() => {
         if (gfgSuccessFound) return;
         const allText = document.body.innerText || '';
         if (allText.includes('Problem Solved Successfully') || allText.includes('Correct Answer')) {
             gfgSuccessFound = true;
-            console.log('[Code Sync] GFG Success detected! Reading code from editor...');
+            console.log('[Code Sync] GFG Success detected! Using pre-saved code...');
+            console.log('[Code Sync] Pre-saved code length:', _gfgSavedCode ? _gfgSavedCode.length : 0, '| lang:', _gfgSavedLang);
 
-            const code = extractGFGCode();
-            const lang = extractGFGLanguage();
-
-            console.log('[Code Sync] Extracted code length:', code ? code.length : 0, '| lang:', lang);
+            // Try reading fresh one more time, fall back to pre-saved
+            const freshCode = readAceEditorValue();
+            const code = (freshCode && freshCode.length > 5) ? freshCode : _gfgSavedCode;
+            const lang = _gfgSavedLang || readGFGLanguage();
 
             if (!code) {
-                console.warn('[Code Sync] Could not read code from GFG editor.');
+                console.warn('[Code Sync] No code available to push.');
                 showToast('⚠️ Solved! But could not read code from editor.', true);
                 setTimeout(() => { gfgSuccessFound = false; }, 10000);
                 return;
             }
 
-            // Prevent double-pushing the same code
             if (window.__last_pushed_code === code) {
-                console.log('[Code Sync] Duplicate push prevented.');
                 setTimeout(() => { gfgSuccessFound = false; }, 10000);
                 return;
             }
