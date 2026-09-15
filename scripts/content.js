@@ -7,26 +7,37 @@ console.log('[Code Sync] Content script loaded. Platform:', platform);
 // the editor element when the success banner appears in the DOM.
 
 function extractGFGCode() {
-    // 1. CodeMirror (classic GFG editor)
+    // 1. Ace editor — GFG's actual editor (confirmed via debug)
+    //    Ace attaches the editor instance to the DOM element via `.env.editor`
+    //    DO NOT use window.ace.edit(el) — that creates a new blank instance!
+    const aceEl = document.querySelector('.ace_editor');
+    if (aceEl) {
+        // Primary: use the attached env
+        if (aceEl.env && aceEl.env.editor) {
+            const val = aceEl.env.editor.getValue();
+            if (val) return val;
+        }
+        // Fallback: ace.edit() may still work in some versions
+        if (window.ace) {
+            try {
+                const val = window.ace.edit(aceEl).getValue();
+                if (val) return val;
+            } catch(e) {}
+        }
+    }
+
+    // 2. CodeMirror
     const cm = document.querySelector('.CodeMirror');
     if (cm && cm.CodeMirror) {
         const val = cm.CodeMirror.getValue();
         if (val) return val;
     }
 
-    // 2. Monaco editor
+    // 3. Monaco editor
     if (window.monaco) {
         try {
             const editors = window.monaco.editor.getEditors();
             if (editors && editors.length > 0) return editors[0].getValue();
-        } catch(e) {}
-    }
-
-    // 3. Ace editor
-    if (window.ace) {
-        try {
-            const aceEl = document.querySelector('.ace_editor');
-            if (aceEl) return window.ace.edit(aceEl).getValue();
         } catch(e) {}
     }
 
